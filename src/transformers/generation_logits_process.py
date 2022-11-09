@@ -15,16 +15,10 @@
 
 import inspect
 import math
-from typing import Callable, Iterable, List, Optional, Tuple, Dict
+from typing import Callable, Iterable, List, Optional, Tuple
 
 import numpy as np
 import torch
-from torch import nn
-from torch.autograd import Function
-try:
-    import ngram_repeat_block_cuda
-except ModuleNotFoundError:
-    ngram_repeat_block_cuda = None
 
 from .utils import add_start_docstrings
 from .utils.logging import get_logger
@@ -32,60 +26,6 @@ from .utils.logging import get_logger
 
 logger = get_logger(__name__)
 
-
-class NGramRepeatBlockFunction(Function):
-    """
-    forward inputs to ngram_repeat_block cuda extension
-    backward method not needed.
-
-    """
-    def forward(self, tokens, lprobs, bsz,
-        step, beam_size, no_repeat_ngram_size):
-        """
-        Args:
-        tokens(Tensor): Input tokens(Bsz*beam, seq_len)
-        lprobs(Tensor): likelihood probability
-        Expected to be updated in place.(Bsz*beam, vocab_size)
-        bsz(int): batch size
-        step(int): current step
-        beam_size(int): beam size
-        no_repeat_ngram_size(int): Ngram size
-        """
-        outputs = ngram_repeat_block_cuda.forward(tokens,
-        lprobs, bsz, step, beam_size, no_repeat_ngram_size)
-        return outputs
-
-    def backward (*args):
-        raise NotImplementedError
-
-class NGramRepeatBlock(nn.Module):
-    """ Wrapper class for calling ngram_repeat_block cuda extension """
-    def __init__(self):
-        super(NGramRepeatBlock, self).__init__()
-
-    def reset_parameters(self):
-        pass
-
-    def forward(self, tokens, lprobs, bsz,
-        step, beam_size, no_repeat_ngram_size):
-        """
-        Args:
-        tokens(Tensor): Input tokens(Bsz*beam, seq_len)
-        lprobs(Tensor): likelihood probability,
-        Expected to be updated in place.(Bsz*beam, vocab_size)
-        bsz(int): batch size
-        step(int): current step
-        beam_size(int): beam size
-        no_repeat_ngram_size(int): Ngram size
-        """
-        assert tokens.size(0) == bsz*beam_size
-        assert lprobs.size(0) == bsz*beam_size
-        tokens = tokens.contiguous()
-        lprobs = lprobs.contiguous()
-        return NGramRepeatBlockFunction.apply(tokens, lprobs,
-               bsz, step, beam_size, no_repeat_ngram_size)
-
-no_repeat_ngram_op = NGramRepeatBlock()
 
 LOGITS_PROCESSOR_INPUTS_DOCSTRING = r"""
     Args:
@@ -233,8 +173,8 @@ class TopPLogitsWarper(LogitsWarper):
 
     Args:
         top_p (`float`):
-            If set to < 1, only the most probable tokens with probabilities that add up to `top_p` or higher are kept
-            for generation.
+            If set to < 1, only the smallest set of most probable tokens with probabilities that add up to `top_p` or
+            higher are kept for generation.
         filter_value (`float`, *optional*, defaults to `-float("Inf")`):
             All filtered values will be set to this float value.
         min_tokens_to_keep (`int`, *optional*, defaults to 1):
@@ -251,17 +191,14 @@ class TopPLogitsWarper(LogitsWarper):
         self.min_tokens_to_keep = min_tokens_to_keep
 
     def __call__(self, input_ids: torch.LongTensor, scores: torch.FloatTensor) -> torch.FloatTensor:
-        sorted_logits, sorted_indices = torch.sort(scores, descending=True)
+        sorted_logits, sorted_indices = torch.sort(scores, descending=False)
         cumulative_probs = sorted_logits.softmax(dim=-1).cumsum(dim=-1)
 
         # Remove tokens with cumulative top_p above the threshold (token with 0 are kept)
-        sorted_indices_to_remove = cumulative_probs > self.top_p
+        sorted_indices_to_remove = cumulative_probs <= (1 - self.top_p)
         if self.min_tokens_to_keep > 1:
-            # Keep at least min_tokens_to_keep (set to min_tokens_to_keep-1 because we add the first one below)
-            sorted_indices_to_remove[..., : self.min_tokens_to_keep - 1] = 0
-        # Shift the indices to the right to keep also the first token above the threshold
-        sorted_indices_to_remove[..., 1:] = sorted_indices_to_remove[..., :-1].clone()
-        sorted_indices_to_remove[..., 0] = 0
+            # Keep at least min_tokens_to_keep
+            sorted_indices_to_remove[..., -self.min_tokens_to_keep :] = 0
 
         # scatter sorted tensors to original indexing
         indices_to_remove = sorted_indices_to_remove.scatter(1, sorted_indices, sorted_indices_to_remove)
@@ -299,6 +236,19 @@ class TopKLogitsWarper(LogitsWarper):
 
 
 class TypicalLogitsWarper(LogitsWarper):
+    r"""
+    [`LogitsWarper`] that performs typical decoding. See [Typical Decoding for Natural Language
+    Generation](https://arxiv.org/abs/2202.00666) for more information.
+
+    Args:
+        mass (`float`):
+            Value of typical_p between 0 and 1 inclusive, defaults to 0.9.
+        filter_value (`float`, *optional*, defaults to `-float("Inf")`):
+            All filtered values will be set to this float value.
+        min_tokens_to_keep (`int`, *optional*, defaults to 1):
+            Minimum number of tokens that cannot be filtered.
+    """
+
     def __init__(self, mass: float = 0.9, filter_value: float = -float("Inf"), min_tokens_to_keep: int = 1):
         mass = float(mass)
         if not (mass > 0 and mass < 1):
@@ -334,17 +284,14 @@ class TypicalLogitsWarper(LogitsWarper):
         return scores
 
 
-def _get_ngrams(
-    ngram_size: int, prev_input_ids: torch.Tensor, num_hypos: int, pad_token_id: int = None
-) -> List[Dict]:
+def _get_ngrams(ngram_size: int, prev_input_ids: torch.Tensor, num_hypos: int):
     generated_ngrams = [{} for _ in range(num_hypos)]
     for idx in range(num_hypos):
         gen_tokens = prev_input_ids[idx].tolist()
         generated_ngram = generated_ngrams[idx]
         for ngram in zip(*[gen_tokens[i:] for i in range(ngram_size)]):
-            if pad_token_id is None or ngram[-1] != pad_token_id:
-                prev_ngram_tuple = tuple(ngram[:-1])
-                generated_ngram[prev_ngram_tuple] = generated_ngram.get(prev_ngram_tuple, []) + [ngram[-1]]
+            prev_ngram_tuple = tuple(ngram[:-1])
+            generated_ngram[prev_ngram_tuple] = generated_ngram.get(prev_ngram_tuple, []) + [ngram[-1]]
     return generated_ngrams
 
 
@@ -356,14 +303,14 @@ def _get_generated_ngrams(banned_ngrams, prev_input_ids, ngram_size, cur_len):
 
 
 def _calc_banned_ngram_tokens(
-    ngram_size: int, prev_input_ids: torch.Tensor, num_hypos: int, cur_len: int, pad_tokens_id: int
+    ngram_size: int, prev_input_ids: torch.Tensor, num_hypos: int, cur_len: int
 ) -> List[Iterable[int]]:
     """Copied from fairseq for no_repeat_ngram in beam_search"""
     if cur_len + 1 < ngram_size:
         # return no banned tokens if we haven't generated no_repeat_ngram_size tokens yet
         return [[] for _ in range(num_hypos)]
 
-    generated_ngrams = _get_ngrams(ngram_size, prev_input_ids, num_hypos, pad_tokens_id)
+    generated_ngrams = _get_ngrams(ngram_size, prev_input_ids, num_hypos)
 
     banned_tokens = [
         _get_generated_ngrams(generated_ngrams[hypo_idx], prev_input_ids[hypo_idx], ngram_size, cur_len)
@@ -372,7 +319,7 @@ def _calc_banned_ngram_tokens(
     return banned_tokens
 
 
-class NoRepeatNGramLogitsProcessor_origin(LogitsProcessor):
+class NoRepeatNGramLogitsProcessor(LogitsProcessor):
     r"""
     [`LogitsProcessor`] that enforces no repetition of n-grams. See
     [Fairseq](https://github.com/pytorch/fairseq/blob/a07cb6f40480928c9e0548b737aadd36ee66ac76/fairseq/sequence_generator.py#L345).
@@ -395,49 +342,6 @@ class NoRepeatNGramLogitsProcessor_origin(LogitsProcessor):
         for i, banned_tokens in enumerate(banned_batch_tokens):
             scores[i, banned_tokens] = -float("inf")
 
-        return scores
-
-class NoRepeatNGramLogitsProcessor(NoRepeatNGramLogitsProcessor_origin):
-    r"""
-    :class:`transformers.LogitsProcessor` that enforces no repetition of n-grams. See `Fairseq
-    <https://github.com/pytorch/fairseq/blob/a07cb6f40480928c9e0548b737aadd36ee66ac76/fairseq/sequence_generator.py#L345>`__.
-    Args:
-        ngram_size (:obj:`int`):
-            All ngrams of size :obj:`ngram_size` can only occur once.
-    """
-
-    def __init__(self, ngram_size: int, num_beams: int = None, batch_size: int = None, pad_token_id: int = None):
-        if not isinstance(ngram_size, int) or ngram_size <= 0:
-            raise ValueError(f"`ngram_size` has to be a strictly positive integer, but is {ngram_size}")
-        self.ngram_size = ngram_size
-        self.num_beams = num_beams
-        self.batch_size = batch_size
-        self.pad_token_id = pad_token_id
-        
-    def __call__(self, input_ids: torch.LongTensor, scores: torch.FloatTensor) -> torch.FloatTensor:
-        def _update_scores(banned_tokens):
-            banned_idx = [(bbsz_idx, banned_idx)
-                          for bbsz_idx in range(len(banned_tokens))
-                          for banned_idx in banned_tokens[bbsz_idx]]
-            if banned_idx:
-                banned_2d_idx = tuple(torch.LongTensor(list(zip(*banned_idx))))
-                scores.index_put_(
-                    banned_2d_idx,
-                    scores.new_tensor(
-                        [-float("inf") * banned_2d_idx[0].nelement()]))
-
-        cpu_input_ids = input_ids.cpu()
-        cur_len = input_ids.shape[-1]
-        if input_ids.is_cuda and scores.is_cuda:
-            if self.num_beams is not None and self.batch_size is not None:
-                x = self.num_beams * self.batch_size
-                if x == input_ids.size(0) and x == scores.size(0):
-                    scores = no_repeat_ngram_op(input_ids, scores.float(), self.batch_size, cur_len-1, self.num_beams, self.ngram_size)
-                    return scores
-
-        num_batch_hypotheses = scores.shape[0]
-        banned_batch_tokens = _calc_banned_ngram_tokens(self.ngram_size, cpu_input_ids, num_batch_hypotheses, cur_len, self.pad_token_id)
-        _update_scores(banned_batch_tokens)
         return scores
 
 
@@ -797,4 +701,51 @@ class LogitNormalization(LogitsProcessor, LogitsWarper):
 
     def __call__(self, input_ids: torch.Tensor, scores: torch.Tensor) -> torch.Tensor:
         scores = scores.log_softmax(dim=-1)
+        return scores
+
+
+class SuppressTokensAtBeginLogitsProcessor(LogitsProcessor):
+    r"""
+    [`SuppressTokensAtBeginLogitsProcessor`] supresses a list of tokens as soon as the `generate` function starts
+    generating using `begin_index` tokens. This should ensure that the tokens defined by `begin_suppress_tokens` at not
+    sampled at the begining of the generation.
+    """
+
+    def __init__(self, begin_suppress_tokens, begin_index):
+        self.begin_suppress_tokens = list(begin_suppress_tokens)
+        self.begin_index = begin_index
+
+    def __call__(self, input_ids, scores):
+        if input_ids.shape[1] == self.begin_index:
+            scores[:, self.begin_suppress_tokens] = -float("inf")
+
+        return scores
+
+
+class SuppressTokensLogitsProcessor(LogitsProcessor):
+    r"""This processor can be used to suppress a list of tokens. The processor will set their log probs to `-inf` so that they
+    are not sampled."""
+
+    def __init__(self, suppress_tokens):
+        self.suppress_tokens = list(suppress_tokens)
+
+    def __call__(self, input_ids, scores):
+        scores[:, self.suppress_tokens] = -float("inf")
+        return scores
+
+
+class ForceTokensLogitsProcessor(LogitsProcessor):
+    r"""This processor takes a list of pairs of integers which indicates a mapping from generation indices to token
+    indices that will be forced before sampling. The processor will set their log probs to `inf` so that they are
+    sampled at their corresponding index."""
+
+    def __init__(self, force_token_map: List[List[int]]):
+        self.force_token_map = dict(force_token_map)
+
+    def __call__(self, input_ids, scores):
+        generation_idx = input_ids.shape[-1]
+        current_token = self.force_token_map.get(generation_idx, None)
+        if current_token is not None:
+            scores[:, :] = -float("inf")
+            scores[:, current_token] = 0
         return scores
