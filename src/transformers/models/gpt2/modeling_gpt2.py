@@ -894,7 +894,7 @@ class GPT2Model_origin(GPT2PreTrainedModel):
     def set_input_embeddings(self, new_embeddings):
         self.wte = new_embeddings
 
-     def set_efficient_tuning(self):
+    def set_efficient_tuning(self):
         methods = self.config.efficient_methods
         assert methods, "If you want to use efficient tuning, make sure to pass the `efficient_methods`."
 
