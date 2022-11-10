@@ -27,6 +27,7 @@ from torch.cuda.amp import autocast
 from torch.nn import BCEWithLogitsLoss, CrossEntropyLoss, MSELoss
 
 from ...activations import ACT2FN
+from ...adapter import Adapter, LoRALinear, PrefixTuning
 from ...modeling_outputs import (
     BaseModelOutputWithPastAndCrossAttentions,
     CausalLMOutputWithCrossAttentions,
