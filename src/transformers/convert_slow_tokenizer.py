@@ -725,7 +725,6 @@ class NllbConverter(SpmConverter):
         )
 
 
-
 class XLMRobertaConverter(SpmConverter):
     def vocab(self, proto):
         vocab = [

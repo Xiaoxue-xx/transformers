@@ -444,6 +444,10 @@ def is_py3nvml_available():
     return importlib.util.find_spec("py3nvml") is not None
 
 
+def is_sacremoses_available():
+    return importlib.util.find_spec("sacremoses") is not None
+
+
 def is_apex_available():
     return importlib.util.find_spec("apex") is not None
 
@@ -693,6 +697,30 @@ PYTORCH_IMPORT_ERROR = """
 installation page: https://pytorch.org/get-started/locally/ and follow the ones that match your environment.
 """
 
+# docstyle-ignore
+PYTORCH_IMPORT_ERROR_WITH_TF = """
+{0} requires the PyTorch library but it was not found in your environment.
+However, we were able to find a TensorFlow installation. TensorFlow classes begin
+with "TF", but are otherwise identically named to our PyTorch classes. This
+means that the TF equivalent of the class you tried to import would be "TF{0}".
+If you want to use TensorFlow, please use TF classes instead!
+
+If you really do want to use PyTorch please go to
+https://pytorch.org/get-started/locally/ and follow the instructions that
+match your environment.
+"""
+
+# docstyle-ignore
+TF_IMPORT_ERROR_WITH_PYTORCH = """
+{0} requires the TensorFlow library but it was not found in your environment.
+However, we were able to find a PyTorch installation. PyTorch classes do not begin
+with "TF", but are otherwise identically named to our TF classes.
+If you want to use PyTorch, please use those classes instead!
+
+If you really do want to use TensorFlow, please follow the instructions on the
+installation page https://www.tensorflow.org/install that match your environment.
+"""
+
 
 # docstyle-ignore
 SKLEARN_IMPORT_ERROR = """
@@ -776,6 +804,13 @@ PHONEMIZER_IMPORT_ERROR = """
 
 
 # docstyle-ignore
+SACREMOSES_IMPORT_ERROR = """
+{0} requires the sacremoses library but it was not found in your environment. You can install it with pip:
+`pip install sacremoses`
+"""
+
+
+# docstyle-ignore
 SCIPY_IMPORT_ERROR = """
 {0} requires the scipy library but it was not found in your environment. You can install it with pip:
 `pip install scipy`
@@ -832,6 +867,7 @@ BACKENDS_MAPPING = OrderedDict(
         ("protobuf", (is_protobuf_available, PROTOBUF_IMPORT_ERROR)),
         ("pyctcdecode", (is_pyctcdecode_available, PYCTCDECODE_IMPORT_ERROR)),
         ("pytesseract", (is_pytesseract_available, PYTESSERACT_IMPORT_ERROR)),
+        ("sacremoses", (is_sacremoses_available, SACREMOSES_IMPORT_ERROR)),
         ("scatter", (is_scatter_available, SCATTER_IMPORT_ERROR)),
         ("pytorch_quantization", (is_pytorch_quantization_available, PYTORCH_QUANTIZATION_IMPORT_ERROR)),
         ("sentencepiece", (is_sentencepiece_available, SENTENCEPIECE_IMPORT_ERROR)),
@@ -855,6 +891,15 @@ def requires_backends(obj, backends):
         backends = [backends]
 
     name = obj.__name__ if hasattr(obj, "__name__") else obj.__class__.__name__
+
+    # Raise an error for users who might not realize that classes without "TF" are torch-only
+    if "torch" in backends and "tf" not in backends and not is_torch_available() and is_tf_available():
+        raise ImportError(PYTORCH_IMPORT_ERROR_WITH_TF.format(name))
+
+    # Raise the inverse error for PyTorch users trying to load TF classes
+    if "tf" in backends and "torch" not in backends and is_torch_available() and not is_tf_available():
+        raise ImportError(TF_IMPORT_ERROR_WITH_PYTORCH.format(name))
+
     checks = (BACKENDS_MAPPING[backend] for backend in backends)
     failed = [msg.format(name) for available, msg in checks if not available()]
     if failed:
