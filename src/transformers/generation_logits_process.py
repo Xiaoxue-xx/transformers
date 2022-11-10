@@ -351,7 +351,7 @@ def _get_ngrams(ngram_size: int, prev_input_ids: torch.Tensor, num_hypos: int, p
         for ngram in zip(*[gen_tokens[i:] for i in range(ngram_size)]):
             if pad_token_id is None or ngram[-1] != pad_token_id:
                 prev_ngram_tuple = tuple(ngram[:-1])
-            generated_ngram[prev_ngram_tuple] = generated_ngram.get(prev_ngram_tuple, []) + [ngram[-1]]
+                generated_ngram[prev_ngram_tuple] = generated_ngram.get(prev_ngram_tuple, []) + [ngram[-1]]
     return generated_ngrams
 
 
