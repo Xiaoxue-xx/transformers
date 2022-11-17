@@ -4401,7 +4401,7 @@ class GenerationMixin(GenerationMixin_origin):
 
             # expand input_ids with `num_return_sequences` additional sequences per batch
             input_ids, model_kwargs = self._expand_inputs_for_generation(
-                input_ids,
+                input_ids=input_ids,
                 expand_size=num_return_sequences,
                 is_encoder_decoder=self.config.is_encoder_decoder,
                 **model_kwargs,
@@ -4438,7 +4438,7 @@ class GenerationMixin(GenerationMixin_origin):
             )
             # interleave with `num_beams`
             input_ids, model_kwargs = self._expand_inputs_for_generation(
-                input_ids, expand_size=num_beams, is_encoder_decoder=self.config.is_encoder_decoder, **model_kwargs
+                input_ids=input_ids, expand_size=num_beams, is_encoder_decoder=self.config.is_encoder_decoder, **model_kwargs
             )
             generated_corpus = self.beam_search(
                 input_ids,
@@ -4475,7 +4475,7 @@ class GenerationMixin(GenerationMixin_origin):
 
             # interleave with `num_beams * num_return_sequences`
             input_ids, model_kwargs = self._expand_inputs_for_generation(
-                input_ids,
+                input_ids=input_ids,
                 expand_size=num_beams * num_return_sequences,
                 is_encoder_decoder=self.config.is_encoder_decoder,
                 **model_kwargs,
@@ -4517,7 +4517,7 @@ class GenerationMixin(GenerationMixin_origin):
             )
             # interleave with `num_beams`
             input_ids, model_kwargs = self._expand_inputs_for_generation(
-                input_ids, expand_size=num_beams, is_encoder_decoder=self.config.is_encoder_decoder, **model_kwargs
+                input_ids=input_ids, expand_size=num_beams, is_encoder_decoder=self.config.is_encoder_decoder, **model_kwargs
             )
             generated_corpus = self.group_beam_search(
                 input_ids,
@@ -4597,7 +4597,7 @@ class GenerationMixin(GenerationMixin_origin):
             )
             # 11. interleave input_ids with `num_beams` additional sequences per batch
             input_ids, model_kwargs = self._expand_inputs_for_generation(
-                input_ids, expand_size=num_beams, is_encoder_decoder=self.config.is_encoder_decoder, **model_kwargs
+                input_ids=input_ids, expand_size=num_beams, is_encoder_decoder=self.config.is_encoder_decoder, **model_kwargs
             )
             # 12. run beam search
             generated_corpus = self.constrained_beam_search(
