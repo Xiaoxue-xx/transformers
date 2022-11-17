@@ -22,9 +22,17 @@ from typing import Optional, Tuple, Union
 
 import torch
 import torch.utils.checkpoint
+from packaging import version
 from torch import nn
 from torch.cuda.amp import autocast
 from torch.nn import BCEWithLogitsLoss, CrossEntropyLoss, MSELoss
+
+
+if version.parse(torch.__version__) >= version.parse("1.6"):
+    is_amp_available = True
+    from torch.cuda.amp import autocast
+else:
+    is_amp_available = False
 
 from ...activations import ACT2FN
 from ...adapter import Adapter, LoRALinear, PrefixTuning
@@ -240,7 +248,12 @@ class GPT2Attention_origin(nn.Module):
             scale_factor /= float(self.layer_idx + 1)
 
         # Upcast (turn off autocast) and reorder (Scale K by 1 / root(dk))
-        with autocast(enabled=False):
+        if is_amp_available:
+            with autocast(enabled=False):
+                q, k = query.reshape(-1, q_seq_len, dk), key.transpose(-1, -2).reshape(-1, dk, k_seq_len)
+                attn_weights = torch.baddbmm(attn_weights, q.float(), k.float(), beta=0, alpha=scale_factor)
+                attn_weights = attn_weights.reshape(bsz, num_heads, q_seq_len, k_seq_len)
+        else:
             q, k = query.reshape(-1, q_seq_len, dk), key.transpose(-1, -2).reshape(-1, dk, k_seq_len)
             attn_weights = torch.baddbmm(attn_weights, q.float(), k.float(), beta=0, alpha=scale_factor)
             attn_weights = attn_weights.reshape(bsz, num_heads, q_seq_len, k_seq_len)
@@ -480,7 +493,7 @@ class GPT2Attention(GPT2Attention_origin):
             present = ((key, value))
         else:
             present = (None,)
-
+        
         if 'prefix-tuning' in self.efficient_methods or 'p-tuning-v2' in self.efficient_methods:
             key, value, attention_mask = self.prefix_tuning(key, value, attention_mask)
 
@@ -829,10 +842,6 @@ DEPARALLELIZE_DOCSTRING = r"""
 """
 
 
-@add_start_docstrings(
-    "The bare GPT2 Model transformer outputting raw hidden-states without any specific head on top.",
-    GPT2_START_DOCSTRING,
-)
 class GPT2Model_origin(GPT2PreTrainedModel):
     _keys_to_ignore_on_load_missing = ["attn.masked_bias"]
 
@@ -894,7 +903,7 @@ class GPT2Model_origin(GPT2PreTrainedModel):
 
     def set_input_embeddings(self, new_embeddings):
         self.wte = new_embeddings
-
+    
     def set_efficient_tuning(self):
         methods = self.config.efficient_methods
         assert methods, "If you want to use efficient tuning, make sure to pass the `efficient_methods`."
@@ -1373,7 +1382,7 @@ class GPT2LMHeadModel(GPT2PreTrainedModel):
 
     def set_output_embeddings(self, new_embeddings):
         self.lm_head = new_embeddings
-
+    
     def set_efficient_tuning(self):
         self.transformer.set_efficient_tuning()
         self.lm_head.requires_grad_(False)

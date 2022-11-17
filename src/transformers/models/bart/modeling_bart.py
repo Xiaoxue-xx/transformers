@@ -179,7 +179,7 @@ class BartAttention_origin(nn.Module):
 
         if 'prefix-tuning' in config.efficient_methods or 'p-tuning-v2' in config.efficient_methods:
             self.prefix_tuning = PrefixTuning(config, num_heads, embed_dim)
-
+        
 
     def _shape(self, tensor: torch.Tensor, seq_len: int, bsz: int):
         return tensor.view(bsz, seq_len, self.num_heads, self.head_dim).transpose(1, 2).contiguous()
@@ -235,10 +235,10 @@ class BartAttention_origin(nn.Module):
 
         proj_shape = (bsz * self.num_heads, -1, self.head_dim)
         query_states = self._shape(query_states, tgt_len, bsz).view(*proj_shape)
-        
+
         if 'prefix-tuning' in self.efficient_methods or 'p-tuning-v2' in self.efficient_methods:
             key_states, value_states, attention_mask = self.prefix_tuning(key_states, value_states, attention_mask)
-
+        
         key_states = key_states.view(*proj_shape)
         value_states = value_states.view(*proj_shape)
 
@@ -446,7 +446,7 @@ class BartAttention(BartAttention_origin):
             attn_output = torch.einsum("bmhts,bnhsd->bmhtd", attn_probs, value_states).reshape(-1, tgt_len, self.head_dim)
         else:
             attn_output = torch.bmm(attn_probs, value_states)
-
+        
         if attn_output.size() != (bsz * self.num_heads, tgt_len, self.head_dim):
             raise ValueError(
                 f"`attn_output` should be of size {(bsz, self.num_heads, tgt_len, self.head_dim)}, but is {attn_output.size()}"
@@ -479,7 +479,7 @@ class BartEncoderLayer(nn.Module):
         self.fc2 = nn.Linear(config.encoder_ffn_dim, self.embed_dim)
         self.final_layer_norm = nn.LayerNorm(self.embed_dim)
         self.is_adapter = 'adapter' in config.efficient_methods
-
+        
         if self.is_adapter:
             self.self_attn_adapter = Adapter(self.embed_dim, config)
             self.ffn_adapter = Adapter(self.embed_dim, config)
@@ -1352,6 +1352,8 @@ class BartDecoder(BartPretrainedModel):
     BART_START_DOCSTRING,
 )
 class BartModel(BartPretrainedModel):
+    _keys_to_ignore_on_load_missing = ["encoder.embed_tokens.weight", "decoder.embed_tokens.weight"]
+
     def __init__(self, config: BartConfig):
         super().__init__(config)
 
@@ -1377,7 +1379,7 @@ class BartModel(BartPretrainedModel):
 
     def get_decoder(self):
         return self.decoder
-
+    
     def set_efficient_tuning(self):
         methods = self.config.efficient_methods
         assert methods, "If you want to use efficient tuning, make sure to pass the `efficient_methods`."
@@ -1398,7 +1400,6 @@ class BartModel(BartPretrainedModel):
                         for proj in [attn.v_proj, attn.q_proj]:
                             proj.A.requires_grad_(True)
                             proj.B.requires_grad_(True)
-
 
     @add_start_docstrings_to_model_forward(BART_INPUTS_DOCSTRING)
     @add_code_sample_docstrings(
@@ -1502,7 +1503,12 @@ class BartModel(BartPretrainedModel):
 )
 class BartForConditionalGeneration(BartPretrainedModel):
     base_model_prefix = "model"
-    _keys_to_ignore_on_load_missing = [r"final_logits_bias", r"lm_head.weight"]
+    _keys_to_ignore_on_load_missing = [
+        r"final_logits_bias",
+        r"lm_head.weight",
+        "encoder.embed_tokens.weight",
+        "decoder.embed_tokens.weight",
+    ]
 
     def __init__(self, config: BartConfig):
         super().__init__(config)
@@ -1538,11 +1544,10 @@ class BartForConditionalGeneration(BartPretrainedModel):
 
     def set_output_embeddings(self, new_embeddings):
         self.lm_head = new_embeddings
-
+    
     def set_efficient_tuning(self):
         self.model.set_efficient_tuning()
         self.lm_head.requires_grad_(False)
-        
 
     @add_start_docstrings_to_model_forward(BART_INPUTS_DOCSTRING)
     @replace_return_docstrings(output_type=Seq2SeqLMOutput, config_class=_CONFIG_FOR_DOC)
@@ -1677,6 +1682,8 @@ class BartForConditionalGeneration(BartPretrainedModel):
     BART_START_DOCSTRING,
 )
 class BartForSequenceClassification(BartPretrainedModel):
+    _keys_to_ignore_on_load_missing = ["encoder.embed_tokens.weight", "decoder.embed_tokens.weight"]
+
     def __init__(self, config: BartConfig, **kwargs):
         super().__init__(config, **kwargs)
         self.model = BartModel(config)
@@ -1804,6 +1811,8 @@ class BartForSequenceClassification(BartPretrainedModel):
     BART_START_DOCSTRING,
 )
 class BartForQuestionAnswering(BartPretrainedModel):
+    _keys_to_ignore_on_load_missing = ["encoder.embed_tokens.weight", "decoder.embed_tokens.weight"]
+
     def __init__(self, config):
         super().__init__(config)
 
@@ -1940,6 +1949,8 @@ class BartDecoderWrapper(BartPretrainedModel):
     BART_START_DOCSTRING,
 )
 class BartForCausalLM(BartPretrainedModel):
+    _keys_to_ignore_on_load_missing = ["lm_head.weight"]
+
     def __init__(self, config):
         config = copy.deepcopy(config)
         config.is_decoder = True

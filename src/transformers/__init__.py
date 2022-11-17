@@ -32,7 +32,6 @@ from .utils import (
     OptionalDependencyNotAvailable,
     _LazyModule,
     is_flax_available,
-    is_scatter_available,
     is_sentencepiece_available,
     is_speech_available,
     is_tensorflow_text_available,
@@ -97,8 +96,10 @@ _import_structure = {
     "feature_extraction_sequence_utils": ["SequenceFeatureExtractor"],
     "feature_extraction_utils": ["BatchFeature", "FeatureExtractionMixin"],
     "file_utils": [],
+    "generation": [],
     "hf_argparser": ["HfArgumentParser"],
     "integrations": [
+        "is_clearml_available",
         "is_comet_available",
         "is_neptune_available",
         "is_optuna_available",
@@ -248,6 +249,13 @@ _import_structure = {
     "models.hubert": ["HUBERT_PRETRAINED_CONFIG_ARCHIVE_MAP", "HubertConfig"],
     "models.ibert": ["IBERT_PRETRAINED_CONFIG_ARCHIVE_MAP", "IBertConfig"],
     "models.imagegpt": ["IMAGEGPT_PRETRAINED_CONFIG_ARCHIVE_MAP", "ImageGPTConfig"],
+    "models.jukebox": [
+        "JUKEBOX_PRETRAINED_CONFIG_ARCHIVE_MAP",
+        "JukeboxConfig",
+        "JukeboxPriorConfig",
+        "JukeboxTokenizer",
+        "JukeboxVQVAEConfig",
+    ],
     "models.layoutlm": ["LAYOUTLM_PRETRAINED_CONFIG_ARCHIVE_MAP", "LayoutLMConfig", "LayoutLMTokenizer"],
     "models.layoutlmv2": [
         "LAYOUTLMV2_PRETRAINED_CONFIG_ARCHIVE_MAP",
@@ -291,6 +299,7 @@ _import_structure = {
     "models.mluke": [],
     "models.mmbt": ["MMBTConfig"],
     "models.mobilebert": ["MOBILEBERT_PRETRAINED_CONFIG_ARCHIVE_MAP", "MobileBertConfig", "MobileBertTokenizer"],
+    "models.mobilenet_v2": ["MOBILENET_V2_PRETRAINED_CONFIG_ARCHIVE_MAP", "MobileNetV2Config"],
     "models.mobilevit": ["MOBILEVIT_PRETRAINED_CONFIG_ARCHIVE_MAP", "MobileViTConfig"],
     "models.mpnet": ["MPNET_PRETRAINED_CONFIG_ARCHIVE_MAP", "MPNetConfig", "MPNetTokenizer"],
     "models.mt5": ["MT5Config"],
@@ -346,6 +355,7 @@ _import_structure = {
     "models.squeezebert": ["SQUEEZEBERT_PRETRAINED_CONFIG_ARCHIVE_MAP", "SqueezeBertConfig", "SqueezeBertTokenizer"],
     "models.swin": ["SWIN_PRETRAINED_CONFIG_ARCHIVE_MAP", "SwinConfig"],
     "models.swinv2": ["SWINV2_PRETRAINED_CONFIG_ARCHIVE_MAP", "Swinv2Config"],
+    "models.switch_transformers": ["SWITCH_TRANSFORMERS_PRETRAINED_CONFIG_ARCHIVE_MAP", "SwitchTransformersConfig"],
     "models.t5": ["T5_PRETRAINED_CONFIG_ARCHIVE_MAP", "T5Config"],
     "models.table_transformer": ["TABLE_TRANSFORMER_PRETRAINED_CONFIG_ARCHIVE_MAP", "TableTransformerConfig"],
     "models.tapas": ["TAPAS_PRETRAINED_CONFIG_ARCHIVE_MAP", "TapasConfig", "TapasTokenizer"],
@@ -718,6 +728,7 @@ else:
     _import_structure["models.layoutlmv3"].extend(["LayoutLMv3FeatureExtractor", "LayoutLMv3ImageProcessor"])
     _import_structure["models.levit"].extend(["LevitFeatureExtractor", "LevitImageProcessor"])
     _import_structure["models.maskformer"].append("MaskFormerFeatureExtractor")
+    _import_structure["models.mobilenet_v2"].extend(["MobileNetV2FeatureExtractor", "MobileNetV2ImageProcessor"])
     _import_structure["models.mobilevit"].extend(["MobileViTFeatureExtractor", "MobileViTImageProcessor"])
     _import_structure["models.owlvit"].append("OwlViTFeatureExtractor")
     _import_structure["models.perceiver"].extend(["PerceiverFeatureExtractor", "PerceiverImageProcessor"])
@@ -774,28 +785,6 @@ else:
         ]
     )
 
-try:
-    if not is_scatter_available():
-        raise OptionalDependencyNotAvailable()
-except OptionalDependencyNotAvailable:
-    from .utils import dummy_scatter_objects
-
-    _import_structure["utils.dummy_scatter_objects"] = [
-        name for name in dir(dummy_scatter_objects) if not name.startswith("_")
-    ]
-else:
-    _import_structure["models.tapas"].extend(
-        [
-            "TAPAS_PRETRAINED_MODEL_ARCHIVE_LIST",
-            "TapasForMaskedLM",
-            "TapasForQuestionAnswering",
-            "TapasForSequenceClassification",
-            "TapasModel",
-            "TapasPreTrainedModel",
-            "load_tf_weights_in_tapas",
-        ]
-    )
-
 
 # PyTorch-backed objects
 try:
@@ -821,38 +810,40 @@ else:
         "TextDatasetForNextSentencePrediction",
     ]
     _import_structure["deepspeed"] = []
-    _import_structure["generation_beam_constraints"] = [
-        "Constraint",
-        "ConstraintListState",
-        "DisjunctiveConstraint",
-        "PhrasalConstraint",
-    ]
-    _import_structure["generation_beam_search"] = ["BeamScorer", "BeamSearchScorer", "ConstrainedBeamSearchScorer"]
-    _import_structure["generation_logits_process"] = [
-        "ForcedBOSTokenLogitsProcessor",
-        "ForcedEOSTokenLogitsProcessor",
-        "HammingDiversityLogitsProcessor",
-        "InfNanRemoveLogitsProcessor",
-        "LogitsProcessor",
-        "LogitsProcessorList",
-        "LogitsWarper",
-        "MinLengthLogitsProcessor",
-        "NoBadWordsLogitsProcessor",
-        "NoRepeatNGramLogitsProcessor",
-        "PrefixConstrainedLogitsProcessor",
-        "RepetitionPenaltyLogitsProcessor",
-        "TemperatureLogitsWarper",
-        "TopKLogitsWarper",
-        "TopPLogitsWarper",
-        "TypicalLogitsWarper",
-    ]
-    _import_structure["generation_stopping_criteria"] = [
-        "MaxLengthCriteria",
-        "MaxTimeCriteria",
-        "StoppingCriteria",
-        "StoppingCriteriaList",
-    ]
-    _import_structure["generation_utils"] = ["top_k_top_p_filtering"]
+    _import_structure["generation_utils"] = []
+    _import_structure["generation"].extend(
+        [
+            "Constraint",
+            "ConstraintListState",
+            "DisjunctiveConstraint",
+            "PhrasalConstraint",
+            "BeamScorer",
+            "BeamSearchScorer",
+            "ConstrainedBeamSearchScorer",
+            "ForcedBOSTokenLogitsProcessor",
+            "ForcedEOSTokenLogitsProcessor",
+            "HammingDiversityLogitsProcessor",
+            "InfNanRemoveLogitsProcessor",
+            "LogitsProcessor",
+            "LogitsProcessorList",
+            "LogitsWarper",
+            "MinLengthLogitsProcessor",
+            "NoBadWordsLogitsProcessor",
+            "NoRepeatNGramLogitsProcessor",
+            "PrefixConstrainedLogitsProcessor",
+            "RepetitionPenaltyLogitsProcessor",
+            "TemperatureLogitsWarper",
+            "TopKLogitsWarper",
+            "TopPLogitsWarper",
+            "TypicalLogitsWarper",
+            "MaxLengthCriteria",
+            "MaxTimeCriteria",
+            "StoppingCriteria",
+            "StoppingCriteriaList",
+            "GenerationMixin",
+            "top_k_top_p_filtering",
+        ]
+    )
     _import_structure["modeling_outputs"] = []
     _import_structure["modeling_utils"] = ["PreTrainedModel"]
 
@@ -1105,7 +1096,9 @@ else:
             "CLIPModel",
             "CLIPPreTrainedModel",
             "CLIPTextModel",
+            "CLIPTextModelWithProjection",
             "CLIPVisionModel",
+            "CLIPVisionModelWithProjection",
         ]
     )
     _import_structure["models.clipseg"].extend(
@@ -1480,6 +1473,15 @@ else:
             "load_tf_weights_in_imagegpt",
         ]
     )
+    _import_structure["models.jukebox"].extend(
+        [
+            "JUKEBOX_PRETRAINED_MODEL_ARCHIVE_LIST",
+            "JukeboxModel",
+            "JukeboxPreTrainedModel",
+            "JukeboxVQVAE",
+            "JukeboxPrior",
+        ]
+    )
     _import_structure["models.layoutlm"].extend(
         [
             "LAYOUTLM_PRETRAINED_MODEL_ARCHIVE_LIST",
@@ -1653,6 +1655,16 @@ else:
             "MobileBertModel",
             "MobileBertPreTrainedModel",
             "load_tf_weights_in_mobilebert",
+        ]
+    )
+    _import_structure["models.mobilenet_v2"].extend(
+        [
+            "MOBILENET_V2_PRETRAINED_MODEL_ARCHIVE_LIST",
+            "MobileNetV2ForImageClassification",
+            "MobileNetV2ForSemanticSegmentation",
+            "MobileNetV2Model",
+            "MobileNetV2PreTrainedModel",
+            "load_tf_weights_in_mobilenet_v2",
         ]
     )
     _import_structure["models.mobilevit"].extend(
@@ -1996,6 +2008,17 @@ else:
             "Swinv2PreTrainedModel",
         ]
     )
+    _import_structure["models.tapas"].extend(
+        [
+            "TAPAS_PRETRAINED_MODEL_ARCHIVE_LIST",
+            "TapasForMaskedLM",
+            "TapasForQuestionAnswering",
+            "TapasForSequenceClassification",
+            "TapasModel",
+            "TapasPreTrainedModel",
+            "load_tf_weights_in_tapas",
+        ]
+    )
     _import_structure["models.t5"].extend(
         [
             "T5_PRETRAINED_MODEL_ARCHIVE_LIST",
@@ -2004,6 +2027,17 @@ else:
             "T5Model",
             "T5PreTrainedModel",
             "load_tf_weights_in_t5",
+        ]
+    )
+    _import_structure["models.switch_transformers"].extend(
+        [
+            "SWITCH_TRANSFORMERS_PRETRAINED_MODEL_ARCHIVE_LIST",
+            "SwitchTransformersEncoderModel",
+            "SwitchTransformersForConditionalGeneration",
+            "SwitchTransformersModel",
+            "SwitchTransformersPreTrainedModel",
+            "SwitchTransformersTop1Router",
+            "SwitchTransformersSparseMLP",
         ]
     )
     _import_structure["models.trajectory_transformer"].extend(
@@ -2278,21 +2312,25 @@ else:
     _import_structure["activations_tf"] = []
     _import_structure["benchmark.benchmark_args_tf"] = ["TensorFlowBenchmarkArguments"]
     _import_structure["benchmark.benchmark_tf"] = ["TensorFlowBenchmark"]
-    _import_structure["generation_tf_logits_process"] = [
-        "TFForcedBOSTokenLogitsProcessor",
-        "TFForcedEOSTokenLogitsProcessor",
-        "TFLogitsProcessor",
-        "TFLogitsProcessorList",
-        "TFLogitsWarper",
-        "TFMinLengthLogitsProcessor",
-        "TFNoBadWordsLogitsProcessor",
-        "TFNoRepeatNGramLogitsProcessor",
-        "TFRepetitionPenaltyLogitsProcessor",
-        "TFTemperatureLogitsWarper",
-        "TFTopKLogitsWarper",
-        "TFTopPLogitsWarper",
-    ]
-    _import_structure["generation_tf_utils"] = ["tf_top_k_top_p_filtering"]
+    _import_structure["generation_tf_utils"] = []
+    _import_structure["generation"].extend(
+        [
+            "TFForcedBOSTokenLogitsProcessor",
+            "TFForcedEOSTokenLogitsProcessor",
+            "TFLogitsProcessor",
+            "TFLogitsProcessorList",
+            "TFLogitsWarper",
+            "TFMinLengthLogitsProcessor",
+            "TFNoBadWordsLogitsProcessor",
+            "TFNoRepeatNGramLogitsProcessor",
+            "TFRepetitionPenaltyLogitsProcessor",
+            "TFTemperatureLogitsWarper",
+            "TFTopKLogitsWarper",
+            "TFTopPLogitsWarper",
+            "TFGenerationMixin",
+            "tf_top_k_top_p_filtering",
+        ]
+    )
     _import_structure["keras_callbacks"] = ["KerasMetricCallback", "PushToHubCallback"]
     _import_structure["modeling_tf_outputs"] = []
     _import_structure["modeling_tf_utils"] = [
@@ -2915,18 +2953,21 @@ except OptionalDependencyNotAvailable:
         name for name in dir(dummy_flax_objects) if not name.startswith("_")
     ]
 else:
-    _import_structure["generation_flax_logits_process"] = [
-        "FlaxForcedBOSTokenLogitsProcessor",
-        "FlaxForcedEOSTokenLogitsProcessor",
-        "FlaxLogitsProcessor",
-        "FlaxLogitsProcessorList",
-        "FlaxLogitsWarper",
-        "FlaxMinLengthLogitsProcessor",
-        "FlaxTemperatureLogitsWarper",
-        "FlaxTopKLogitsWarper",
-        "FlaxTopPLogitsWarper",
-    ]
     _import_structure["generation_flax_utils"] = []
+    _import_structure["generation"].extend(
+        [
+            "FlaxForcedBOSTokenLogitsProcessor",
+            "FlaxForcedEOSTokenLogitsProcessor",
+            "FlaxLogitsProcessor",
+            "FlaxLogitsProcessorList",
+            "FlaxLogitsWarper",
+            "FlaxMinLengthLogitsProcessor",
+            "FlaxTemperatureLogitsWarper",
+            "FlaxTopKLogitsWarper",
+            "FlaxTopPLogitsWarper",
+            "FlaxGenerationMixin",
+        ]
+    )
     _import_structure["modeling_flax_outputs"] = []
     _import_structure["modeling_flax_utils"] = ["FlaxPreTrainedModel"]
     _import_structure["models.albert"].extend(
@@ -3201,6 +3242,7 @@ if TYPE_CHECKING:
 
     # Integrations
     from .integrations import (
+        is_clearml_available,
         is_comet_available,
         is_neptune_available,
         is_optuna_available,
@@ -3343,6 +3385,13 @@ if TYPE_CHECKING:
     from .models.hubert import HUBERT_PRETRAINED_CONFIG_ARCHIVE_MAP, HubertConfig
     from .models.ibert import IBERT_PRETRAINED_CONFIG_ARCHIVE_MAP, IBertConfig
     from .models.imagegpt import IMAGEGPT_PRETRAINED_CONFIG_ARCHIVE_MAP, ImageGPTConfig
+    from .models.jukebox import (
+        JUKEBOX_PRETRAINED_CONFIG_ARCHIVE_MAP,
+        JukeboxConfig,
+        JukeboxPriorConfig,
+        JukeboxTokenizer,
+        JukeboxVQVAEConfig,
+    )
     from .models.layoutlm import LAYOUTLM_PRETRAINED_CONFIG_ARCHIVE_MAP, LayoutLMConfig, LayoutLMTokenizer
     from .models.layoutlmv2 import (
         LAYOUTLMV2_PRETRAINED_CONFIG_ARCHIVE_MAP,
@@ -3383,6 +3432,7 @@ if TYPE_CHECKING:
     from .models.megatron_bert import MEGATRON_BERT_PRETRAINED_CONFIG_ARCHIVE_MAP, MegatronBertConfig
     from .models.mmbt import MMBTConfig
     from .models.mobilebert import MOBILEBERT_PRETRAINED_CONFIG_ARCHIVE_MAP, MobileBertConfig, MobileBertTokenizer
+    from .models.mobilenet_v2 import MOBILENET_V2_PRETRAINED_CONFIG_ARCHIVE_MAP, MobileNetV2Config
     from .models.mobilevit import MOBILEVIT_PRETRAINED_CONFIG_ARCHIVE_MAP, MobileViTConfig
     from .models.mpnet import MPNET_PRETRAINED_CONFIG_ARCHIVE_MAP, MPNetConfig, MPNetTokenizer
     from .models.mt5 import MT5Config
@@ -3431,6 +3481,7 @@ if TYPE_CHECKING:
     from .models.squeezebert import SQUEEZEBERT_PRETRAINED_CONFIG_ARCHIVE_MAP, SqueezeBertConfig, SqueezeBertTokenizer
     from .models.swin import SWIN_PRETRAINED_CONFIG_ARCHIVE_MAP, SwinConfig
     from .models.swinv2 import SWINV2_PRETRAINED_CONFIG_ARCHIVE_MAP, Swinv2Config
+    from .models.switch_transformers import SWITCH_TRANSFORMERS_PRETRAINED_CONFIG_ARCHIVE_MAP, SwitchTransformersConfig
     from .models.t5 import T5_PRETRAINED_CONFIG_ARCHIVE_MAP, T5Config
     from .models.table_transformer import TABLE_TRANSFORMER_PRETRAINED_CONFIG_ARCHIVE_MAP, TableTransformerConfig
     from .models.tapas import TAPAS_PRETRAINED_CONFIG_ARCHIVE_MAP, TapasConfig, TapasTokenizer
@@ -3754,6 +3805,7 @@ if TYPE_CHECKING:
         from .models.layoutlmv3 import LayoutLMv3FeatureExtractor, LayoutLMv3ImageProcessor
         from .models.levit import LevitFeatureExtractor, LevitImageProcessor
         from .models.maskformer import MaskFormerFeatureExtractor
+        from .models.mobilenet_v2 import MobileNetV2FeatureExtractor, MobileNetV2ImageProcessor
         from .models.mobilevit import MobileViTFeatureExtractor, MobileViTImageProcessor
         from .models.owlvit import OwlViTFeatureExtractor
         from .models.perceiver import PerceiverFeatureExtractor, PerceiverImageProcessor
@@ -3799,22 +3851,6 @@ if TYPE_CHECKING:
         )
 
     try:
-        if not is_scatter_available():
-            raise OptionalDependencyNotAvailable()
-    except OptionalDependencyNotAvailable:
-        from .utils.dummy_scatter_objects import *
-    else:
-        from .models.tapas import (
-            TAPAS_PRETRAINED_MODEL_ARCHIVE_LIST,
-            TapasForMaskedLM,
-            TapasForQuestionAnswering,
-            TapasForSequenceClassification,
-            TapasModel,
-            TapasPreTrainedModel,
-            load_tf_weights_in_tapas,
-        )
-
-    try:
         if not is_torch_available():
             raise OptionalDependencyNotAvailable()
     except OptionalDependencyNotAvailable:
@@ -3834,38 +3870,37 @@ if TYPE_CHECKING:
             TextDataset,
             TextDatasetForNextSentencePrediction,
         )
-        from .generation_beam_constraints import (
+        from .generation import (
+            BeamScorer,
+            BeamSearchScorer,
+            ConstrainedBeamSearchScorer,
             Constraint,
             ConstraintListState,
             DisjunctiveConstraint,
-            PhrasalConstraint,
-        )
-        from .generation_beam_search import BeamScorer, BeamSearchScorer, ConstrainedBeamSearchScorer
-        from .generation_logits_process import (
             ForcedBOSTokenLogitsProcessor,
             ForcedEOSTokenLogitsProcessor,
+            GenerationMixin,
             HammingDiversityLogitsProcessor,
             InfNanRemoveLogitsProcessor,
             LogitsProcessor,
             LogitsProcessorList,
             LogitsWarper,
+            MaxLengthCriteria,
+            MaxTimeCriteria,
             MinLengthLogitsProcessor,
             NoBadWordsLogitsProcessor,
             NoRepeatNGramLogitsProcessor,
+            PhrasalConstraint,
             PrefixConstrainedLogitsProcessor,
             RepetitionPenaltyLogitsProcessor,
+            StoppingCriteria,
+            StoppingCriteriaList,
             TemperatureLogitsWarper,
             TopKLogitsWarper,
             TopPLogitsWarper,
             TypicalLogitsWarper,
+            top_k_top_p_filtering,
         )
-        from .generation_stopping_criteria import (
-            MaxLengthCriteria,
-            MaxTimeCriteria,
-            StoppingCriteria,
-            StoppingCriteriaList,
-        )
-        from .generation_utils import top_k_top_p_filtering
         from .modeling_utils import PreTrainedModel
 
         # PyTorch model imports
@@ -4053,7 +4088,9 @@ if TYPE_CHECKING:
             CLIPModel,
             CLIPPreTrainedModel,
             CLIPTextModel,
+            CLIPTextModelWithProjection,
             CLIPVisionModel,
+            CLIPVisionModelWithProjection,
         )
         from .models.clipseg import (
             CLIPSEG_PRETRAINED_MODEL_ARCHIVE_LIST,
@@ -4350,6 +4387,13 @@ if TYPE_CHECKING:
             ImageGPTPreTrainedModel,
             load_tf_weights_in_imagegpt,
         )
+        from .models.jukebox import (
+            JUKEBOX_PRETRAINED_MODEL_ARCHIVE_LIST,
+            JukeboxModel,
+            JukeboxPreTrainedModel,
+            JukeboxPrior,
+            JukeboxVQVAE,
+        )
         from .models.layoutlm import (
             LAYOUTLM_PRETRAINED_MODEL_ARCHIVE_LIST,
             LayoutLMForMaskedLM,
@@ -4495,6 +4539,14 @@ if TYPE_CHECKING:
             MobileBertModel,
             MobileBertPreTrainedModel,
             load_tf_weights_in_mobilebert,
+        )
+        from .models.mobilenet_v2 import (
+            MOBILENET_V2_PRETRAINED_MODEL_ARCHIVE_LIST,
+            MobileNetV2ForImageClassification,
+            MobileNetV2ForSemanticSegmentation,
+            MobileNetV2Model,
+            MobileNetV2PreTrainedModel,
+            load_tf_weights_in_mobilenet_v2,
         )
         from .models.mobilevit import (
             MOBILEVIT_PRETRAINED_MODEL_ARCHIVE_LIST,
@@ -4785,6 +4837,15 @@ if TYPE_CHECKING:
             Swinv2Model,
             Swinv2PreTrainedModel,
         )
+        from .models.switch_transformers import (
+            SWITCH_TRANSFORMERS_PRETRAINED_MODEL_ARCHIVE_LIST,
+            SwitchTransformersEncoderModel,
+            SwitchTransformersForConditionalGeneration,
+            SwitchTransformersModel,
+            SwitchTransformersPreTrainedModel,
+            SwitchTransformersSparseMLP,
+            SwitchTransformersTop1Router,
+        )
         from .models.t5 import (
             T5_PRETRAINED_MODEL_ARCHIVE_LIST,
             T5EncoderModel,
@@ -4792,6 +4853,15 @@ if TYPE_CHECKING:
             T5Model,
             T5PreTrainedModel,
             load_tf_weights_in_t5,
+        )
+        from .models.tapas import (
+            TAPAS_PRETRAINED_MODEL_ARCHIVE_LIST,
+            TapasForMaskedLM,
+            TapasForQuestionAnswering,
+            TapasForSequenceClassification,
+            TapasModel,
+            TapasPreTrainedModel,
+            load_tf_weights_in_tapas,
         )
         from .models.time_series_transformer import (
             TIME_SERIES_TRANSFORMER_PRETRAINED_MODEL_ARCHIVE_LIST,
@@ -5037,9 +5107,10 @@ if TYPE_CHECKING:
 
         # Benchmarks
         from .benchmark.benchmark_tf import TensorFlowBenchmark
-        from .generation_tf_logits_process import (
+        from .generation import (
             TFForcedBOSTokenLogitsProcessor,
             TFForcedEOSTokenLogitsProcessor,
+            TFGenerationMixin,
             TFLogitsProcessor,
             TFLogitsProcessorList,
             TFLogitsWarper,
@@ -5050,8 +5121,8 @@ if TYPE_CHECKING:
             TFTemperatureLogitsWarper,
             TFTopKLogitsWarper,
             TFTopPLogitsWarper,
+            tf_top_k_top_p_filtering,
         )
-        from .generation_tf_utils import tf_top_k_top_p_filtering
         from .keras_callbacks import KerasMetricCallback, PushToHubCallback
         from .modeling_tf_layoutlm import (
             TF_LAYOUTLM_PRETRAINED_MODEL_ARCHIVE_LIST,
@@ -5541,9 +5612,10 @@ if TYPE_CHECKING:
         # They will raise an import error if the user tries to instantiate / use them.
         from .utils.dummy_flax_objects import *
     else:
-        from .generation_flax_logits_process import (
+        from .generation import (
             FlaxForcedBOSTokenLogitsProcessor,
             FlaxForcedEOSTokenLogitsProcessor,
+            FlaxGenerationMixin,
             FlaxLogitsProcessor,
             FlaxLogitsProcessorList,
             FlaxLogitsWarper,

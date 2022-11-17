@@ -43,7 +43,7 @@ from . import DataCollatorWithPadding, DefaultDataCollator
 from .activations_tf import get_tf_activation
 from .configuration_utils import PretrainedConfig
 from .dynamic_module_utils import custom_object_save
-from .generation_tf_utils import TFGenerationMixin
+from .generation import TFGenerationMixin
 from .tf_utils import shape_list
 from .utils import (
     DUMMY_INPUTS,
@@ -94,7 +94,11 @@ TFModelInputType = Union[
 
 
 def dummy_loss(y_true, y_pred):
-    return tf.reduce_mean(y_pred)
+    if y_pred.shape.rank <= 1:
+        return y_pred
+    else:
+        reduction_axes = list(range(1, y_pred.shape.rank))
+        return tf.reduce_mean(y_pred, axis=reduction_axes)
 
 
 class TFModelUtilsMixin:
